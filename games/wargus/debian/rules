@@ -1,0 +1,89 @@
+#!/usr/bin/make -f
+#
+#    debian/rules
+#    Copyright (C) 2010  Pali Rohár <pali.rohar@gmail.com>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#
+
+include /usr/share/cdbs/1/rules/debhelper.mk
+
+VERSION := $(shell dpkg-parsechangelog | sed -ne "s/^Version: \(.*\)/\1/p" | sed "s/-[^-]*$$//" )
+
+clean::
+	$(MAKE) clean
+	if [ -f $(CURDIR)/debian/control.orig ]; then \
+		mv $(CURDIR)/debian/control.orig $(CURDIR)/debian/control; \
+	fi
+
+build:
+	if [ -f /etc/maemo_version ]; then \
+		$(MAKE) all warextract GTKFLAGS="$(shell pkg-config --cflags --libs hildon-1 gtk+-2.0)"; \
+	else \
+		$(MAKE); \
+	fi
+	
+install/wargus::
+	if [ -f /etc/maemo_version ]; then \
+		install -m0755 warextract $(CURDIR)/debian/wargus/usr/games; \
+	fi
+
+binary-post-install/wargus::
+	find $(CURDIR)/debian/wargus/usr/share/games/stratagus/wargus/maps -name "*.pud*" -print | xargs rm
+
+binary-fixup/wargus::
+	if [ -f /etc/maemo_version ]; then \
+		mkdir -p $(CURDIR)/debian/wargus/usr/share/applications/hildon; \
+		mkdir -p $(CURDIR)/debian/wargus/opt/stratagus/bin; \
+		mkdir -p $(CURDIR)/debian/wargus/opt/stratagus/share/doc; \
+		mkdir -p $(CURDIR)/debian/wargus/opt/man/man6; \
+		mv $(CURDIR)/debian/wargus/usr/games/* $(CURDIR)/debian/wargus/opt/stratagus/bin/; \
+		mv $(CURDIR)/debian/wargus/usr/share/doc/wargus $(CURDIR)/debian/wargus/opt/stratagus/share/doc/; \
+		mv $(CURDIR)/debian/wargus/usr/share/games/stratagus/wargus $(CURDIR)/debian/wargus/opt/stratagus/share/; \
+		mv $(CURDIR)/debian/wargus/usr/share/man/man6/* $(CURDIR)/debian/wargus/opt/man/man6/; \
+		mv $(CURDIR)/debian/wargus/usr/share/applications/wargus.desktop $(CURDIR)/debian/wargus/usr/share/applications/hildon/wargus.desktop; \
+		ln -s /opt/stratagus/bin/warextract $(CURDIR)/debian/wargus/usr/games/warextract; \
+		ln -s /opt/stratagus/bin/wartool $(CURDIR)/debian/wargus/usr/games/wartool; \
+		ln -s /opt/stratagus/bin/wargus $(CURDIR)/debian/wargus/usr/games/wargus; \
+		ln -s /opt/stratagus/bin/pudconvert $(CURDIR)/debian/wargus/usr/games/pudconvert; \
+		ln -s /opt/stratagus/share/wargus $(CURDIR)/debian/wargus/usr/share/games/stratagus/wargus; \
+		ln -s /opt/stratagus/share/doc/wargus $(CURDIR)/debian/wargus/usr/share/doc/wargus; \
+		ln -s /opt/man/man6/wargus.6.gz $(CURDIR)/debian/wargus/usr/share/man/man6/wargus.6.gz; \
+		ln -s /opt/man/man6/wartool.6.gz $(CURDIR)/debian/wargus/usr/share/man/man6/wartool.6.gz; \
+		ln -s /opt/man/man6/pudconvert.6.gz $(CURDIR)/debian/wargus/usr/share/man/man6/pudconvert.6.gz; \
+		echo "X-Osso-Type=application/x-executable" >> $(CURDIR)/debian/wargus/usr/share/applications/hildon/wargus.desktop; \
+		sed "s/Exec=.*/Exec=\/opt\/stratagus\/bin\/wargus/" -i $(CURDIR)/debian/wargus/usr/share/applications/hildon/wargus.desktop; \
+		sed "s/Name=.*/Name=Wargus/" -i $(CURDIR)/debian/wargus/usr/share/applications/hildon/wargus.desktop; \
+	fi
+
+binary-predeb/wargus::
+	echo "stratagus:Depends=stratagus (>= $(VERSION))" >> $(CURDIR)/debian/wargus.substvars
+	if [ -f /etc/maemo_version ]; then \
+		cp $(CURDIR)/debian/control $(CURDIR)/debian/control.orig; \
+		sed -n -e "1,/^Pre-Depends:.*$$/p" $(CURDIR)/debian/control.orig > $(CURDIR)/debian/control; \
+		sed "s/Section: .*/Section: user\/games/" -i $(CURDIR)/debian/control; \
+		sed "/Pre-Depends:/s/cdparanoia, /findutils-gnu, /" -i $(CURDIR)/debian/control; \
+		echo "XSBC-Bugtracker: https://bugs.launchpad.net/wargus" >> $(CURDIR)/debian/control; \
+		echo "XB-Maemo-Display-Name: Wargus - Warcraft II" >> $(CURDIR)/debian/control; \
+		echo "XB-Maemo-Icon-26:" >> $(CURDIR)/debian/control; \
+		for line in $(shell convert contrib/wargus.png -resize 48x48 png:- | uuencode -m - | tail -n +2 | head -n -1); do \
+			echo " $$line" >> $(CURDIR)/debian/control; \
+		done; \
+		sed "/^# Source debconf library$$/d;/^. \/usr\/share\/debconf\/confmodule$$/d" -i $(CURDIR)/debian/wargus/DEBIAN/postinst; \
+		bash -c 'sed -n -e "1,/^extract() {$$/p;/^}$$/,\$$p;/extract()/a\\`echo -e "\n\t"`cd /opt/stratagus/share/wargus\\`echo -e "\n\t"`run-standalone.sh /opt/stratagus/bin/warextract\\`echo -e "\n\t"`return $$\?" -i $(CURDIR)/debian/wargus/DEBIAN/postinst'; \
+		rm -f $(CURDIR)/debian/wargus/DEBIAN/config; \
+		rm -f $(CURDIR)/debian/wargus/DEBIAN/templates; \
+		sed -n -e "/^Pre-Depends:.*$$/,\$$p" $(CURDIR)/debian/control.orig | tail -n +2 >> $(CURDIR)/debian/control; \
+	fi

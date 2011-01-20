@@ -1,0 +1,51 @@
+#!/bin/sh -e
+
+# Source debconf library
+. /usr/share/debconf/confmodule
+db_capb backup
+
+if [ "$(cat /usr/share/games/stratagus/stargus/extracted 2>/dev/null)" = "$(/usr/games/startool -V)" ]; then
+	db_set stargus/extractdata "false" || true
+	db_stop || true
+	exit 0
+fi
+
+db_get stargus/cdpath || true
+TEMP=$RET
+db_reset stargus/cdpath || true
+db_set stargus/cdpath $TEMP || true
+
+db_reset stargus/extractdata || true
+
+while true; do
+
+	db_beginblock || true
+	db_input high stargus/extractdata || true
+	db_input high stargus/cdpath || true
+	db_endblock || true
+	db_go || exit 10
+
+	db_get stargus/extractdata || true
+	EXTRACTDATA=$RET
+
+	db_get stargus/cdpath || true
+	DATADIR=$RET
+
+	if [ "$EXTRACTDATA" = "false" ]; then
+		break
+	fi
+
+	if [ ! -f "$DATADIR/install.exe" ] && [ ! -f "$DATADIR/INSTALL.EXE" ]; then
+		db_beginblock || true
+		db_input high stargus/nodata || true
+		db_endblock || true
+		db_go || true
+		continue
+	fi
+
+	break
+
+done
+
+db_stop || true
+
